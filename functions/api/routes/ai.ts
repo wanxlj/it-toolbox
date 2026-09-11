@@ -5,27 +5,6 @@ export const aiRoute = new Hono<{ Bindings: Env }>()
 
 const MODEL = '@cf/meta/llama-3.2-3b-instruct' as const
 
-function safeParseAIJson(raw: unknown): unknown {
-  // 如果已经是对象，直接返回
-  if (typeof raw !== 'string') return raw
-
-  // 去掉 markdown 代码块标记
-  let text = raw.replace(/```json?/g, '').replace(/```/g, '').trim()
-
-  // 第一次尝试：直接解析
-  try {
-    return JSON.parse(text)
-  } catch {
-    // 继续走修复流程
-  }
-
-  // 修复无效的转义字符：把 \x（x 不是合法转义字符）替换为 \\x
-  // 合法转义：\" \\ \/ \b \f \n \r \t \uXXXX
-  text = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
-
-  return JSON.parse(text)
-}
-
 aiRoute.post('/explain', async (c) => {
   const { code, language = 'unknown' } = await c.req.json<{ code: string; language?: string }>()
   if (!code?.trim()) return c.json({ success: false, error: 'code is required' }, 400)
@@ -36,19 +15,8 @@ aiRoute.post('/explain', async (c) => {
     { role: 'user', content: `请解释以下 ${language} 代码：\n\n\`\`\`${language}\n${code}\n\`\`\`` }
   ]
 
-  try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
-    return c.json({ success: true, data: { explanation: result.response } })
-  } catch (err) {
-    console.error('AI call failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
-  }
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
+  return c.json({ success: true, data: { explanation: result.response } })
 })
 
 aiRoute.post('/regex', async (c) => {
@@ -60,19 +28,12 @@ aiRoute.post('/regex', async (c) => {
     { role: 'user', content: description }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: unknown }
-    const parsed = safeParseAIJson(result.response)
+    const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -86,19 +47,12 @@ aiRoute.post('/sql', async (c) => {
     { role: 'user', content: `${description}${schemaContext}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -123,19 +77,12 @@ All text must be in Chinese. Be specific and actionable.`
     { role: 'user', content: `请审查以下 ${language} 代码：\n\n\`\`\`${language}\n${code}\n\`\`\`` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -163,19 +110,12 @@ The schema should include:
     { role: 'user', content: `请为以下JSON生成JSON Schema：\n\n${json}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -205,19 +145,12 @@ Rules:
     { role: 'user', content: `请分析以下Git diff并生成提交信息：\n\n${diff}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -246,19 +179,12 @@ Rules:
     { role: 'user', content: `请从以下文本中提取结构化信息：${fieldsHint}\n\n文本内容：\n${text}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -286,19 +212,12 @@ Rules:
     { role: 'user', content: `${sourceHint}\n目标语言：${targetLang}\n\n需要翻译的文本：\n${text}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -327,19 +246,12 @@ Rules:
     { role: 'user', content: `请分析以下错误信息并提供解决方案：${contextHint}\n\n错误信息：\n${errorText}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -366,19 +278,12 @@ Rules:
     { role: 'user', content: `功能描述：${description}\n命名风格：${style}\n类型：${type}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -403,19 +308,12 @@ Rules:
     { role: 'user', content: `数据描述：${description}\n生成数量：${count}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
 
@@ -444,18 +342,11 @@ Rules:
     { role: 'user', content: `描述：${description}` }
   ]
 
+  const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
   try {
-    if (!c.env.AI) {
-      return c.json({ success: false, error: 'AI binding is not configured' }, 500)
-    }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
     const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
     return c.json({ success: true, data: parsed })
-  } catch (err) {
-    console.error('AI call or parse failed:', err)
-    return c.json({
-      success: false,
-      error: err instanceof Error ? err.message : 'AI service temporarily unavailable'
-    }, 500)
+  } catch {
+    return c.json({ success: false, error: 'Failed to parse AI response' }, 500)
   }
 })
