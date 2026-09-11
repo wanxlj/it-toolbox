@@ -3,7 +3,7 @@ import type { Env } from '../[[route]]'
 
 export const aiRoute = new Hono<{ Bindings: Env }>()
 
-const MODEL = '@cf/meta/llama-3.1-8b-instruct' as const
+const MODEL = '@cf/meta/llama-3.2-3b-instruct' as const
 
 aiRoute.post('/explain', async (c) => {
   const { code, language = 'unknown' } = await c.req.json<{ code: string; language?: string }>()
