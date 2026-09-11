@@ -43,8 +43,14 @@ aiRoute.post('/regex', async (c) => {
     if (!c.env.AI) {
       return c.json({ success: false, error: 'AI binding is not configured' }, 500)
     }
-    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: string }
-    const parsed = JSON.parse(result.response.replace(/```json?|```/g, '').trim())
+    const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: unknown }
+
+    // 兼容两种返回格式：字符串 或 对象
+    const raw = result.response
+    const parsed = typeof raw === 'string'
+      ? JSON.parse(raw.replace(/```json?|```/g, '').trim())
+      : raw
+
     return c.json({ success: true, data: parsed })
   } catch (err) {
     console.error('AI call or parse failed:', err)
