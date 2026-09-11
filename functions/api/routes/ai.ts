@@ -5,6 +5,27 @@ export const aiRoute = new Hono<{ Bindings: Env }>()
 
 const MODEL = '@cf/meta/llama-3.2-3b-instruct' as const
 
+function safeParseAIJson(raw: unknown): unknown {
+  // 如果已经是对象，直接返回
+  if (typeof raw !== 'string') return raw
+
+  // 去掉 markdown 代码块标记
+  let text = raw.replace(/```json?/g, '').replace(/```/g, '').trim()
+
+  // 第一次尝试：直接解析
+  try {
+    return JSON.parse(text)
+  } catch {
+    // 继续走修复流程
+  }
+
+  // 修复无效的转义字符：把 \x（x 不是合法转义字符）替换为 \\x
+  // 合法转义：\" \\ \/ \b \f \n \r \t \uXXXX
+  text = text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\')
+
+  return JSON.parse(text)
+}
+
 aiRoute.post('/explain', async (c) => {
   const { code, language = 'unknown' } = await c.req.json<{ code: string; language?: string }>()
   if (!code?.trim()) return c.json({ success: false, error: 'code is required' }, 400)
@@ -44,13 +65,7 @@ aiRoute.post('/regex', async (c) => {
       return c.json({ success: false, error: 'AI binding is not configured' }, 500)
     }
     const result = await c.env.AI.run(MODEL as keyof AiModels, { messages }) as { response: unknown }
-
-    // 兼容两种返回格式：字符串 或 对象
-    const raw = result.response
-    const parsed = typeof raw === 'string'
-      ? JSON.parse(raw.replace(/```json?|```/g, '').trim())
-      : raw
-
+    const parsed = safeParseAIJson(result.response)
     return c.json({ success: true, data: parsed })
   } catch (err) {
     console.error('AI call or parse failed:', err)
